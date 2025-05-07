@@ -40,3 +40,11 @@ services:
     container_name: redis
     ports:
     - 6379:6379
+
+  app:
+    build: .
+    container_name: app
+    volumes:
+    - .:/go/src
+    ports:
+    - 8181:8181
