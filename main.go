@@ -1,29 +1,26 @@
 package main
 
 import (
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"log"
 	"math/rand"
 	"net/http"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"time"
 )
 
 var onlineUsers = prometheus.NewGauge(prometheus.GaugeOpts{
 	Name: "goapp_online_users",
 	Help: "Online users",
 	ConstLabels: map[string]string{
-		"website": "ecommerce",
+		"website": "ecomerce",
 	},
 })
 
-var httpRequests = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Name: "goapp_http_requests_total",
-		Help: "Total HTTP requests",
-	},
-	[]string{"method", "path"},
-),
+var httpRequestsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "goapp_http_requests_total",
+	Help: "Count of all HTTP requests for goapp",
+}, []string{})
 
 var httpDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 	Name: "goapp_http_request_duration",
@@ -33,7 +30,7 @@ var httpDuration = prometheus.NewHistogramVec(prometheus.HistogramOpts{
 func main() {
 	r := prometheus.NewRegistry()
 	r.MustRegister(onlineUsers)
-	r.MustRegister(httpRequests)
+	r.MustRegister(httpRequestsTotal)
 	r.MustRegister(httpDuration)
 
 	go func() {
@@ -42,13 +39,20 @@ func main() {
 		}
 	}()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
-		// Incrementa a métrica com as labels corretas
-		httpRequests.WithLabelValues(req.Method, req.URL.Path).Inc()
-
+	home := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(time.Duration(rand.Intn(8))*time.Second)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hello, World!"))
+		w.Write([]byte("Hello world"))
 	})
+
+	d := promhttp.InstrumentHandlerDuration(
+		httpDuration.MustCurryWith(prometheus.Labels{"handler": "home"}),
+		promhttp.InstrumentHandlerCounter(httpRequestsTotal, home),
+	)
+
+
+
+	http.Handle("/", d)
 
 	http.Handle("/metrics", promhttp.HandlerFor(r, promhttp.HandlerOpts{}))
 	log.Fatal(http.ListenAndServe(":8181", nil))
